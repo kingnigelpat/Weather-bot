@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Oghara Weather Bot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="chat-container">
+        <h1 class="header">Oghara Weather Bot 🌦️</h1>
+
+        <div class="chat-box" id="chat-box">
+            <div class="bot-message">Hello! Ask me about the weather in Oghara 🌤️</div>
+        </div>
+
+        <form id="chat-form">
+            <input type="text" id="user-input" placeholder="Type something... (e.g. check weather)" required>
+            <button type="submit">Send</button>
+        </form>
+    </div>
+    <div id="bot-response" style="white-space: pre-line;"></div>
+
+    <div class="suggestions">
+        <button onclick="sendSuggestion('Would it rain today?')">🌧️ Would it rain today?</button>
+        <button onclick="sendSuggestion('When will rain fall?')">🌦️ When will rain fall?</button>
+        <button onclick="sendSuggestion('Check weather')">🌤️ Check weather</button>
+      </div>
+      
+      <script>
+        function sendSuggestion(text) {
+            document.getElementById('user-input').value = text;
+            // Removed sendMessage() as it was undefined; add form submission if needed
+            document.getElementById('chat-form').dispatchEvent(new Event('submit'));
+        }
+        
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const chatBox = document.getElementById('chat-box');
+        
+        // Typing effect function
+        function typeEffect(text, targetElement, speed = 30) {
+            targetElement.textContent = '';
+            let index = 0;
+            const typing = setInterval(() => {
+                if (index < text.length) {
+                    targetElement.textContent += text.charAt(index);
+                    index++;
+                } else {
+                    clearInterval(typing);
+                }
+            }, speed);
+        }
+        
+        // Convert UTC time string to WAT (Africa/Lagos)
+        function convertToWAT(utcTimeStr) {
+            const utcDate = new Date(utcTimeStr + ' UTC'); // parse as UTC
+            return utcDate.toLocaleString('en-NG', {
+                timeZone: 'Africa/Lagos',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+        
+        // Check if time already passed (compared to now)
+        function isTimeInPast(utcTimeStr) {
+            const now = new Date();
+            const target = new Date(utcTimeStr + ' UTC');
+            return target < now;
+        }
+        
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userText = userInput.value.trim();
+            if (!userText) return;
+        
+            // Append user message
+            const userMessageDiv = document.createElement('div');
+            userMessageDiv.className = 'user-message';
+            userMessageDiv.textContent = userText;
+            chatBox.appendChild(userMessageDiv);
+            userInput.value = '';
+        
+            // Show loading/typing animation
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'bot-message typing';
+            loadingDiv.textContent = 'Typing...';
+            chatBox.appendChild(loadingDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        
+            try {
+                // Fetch response
+                const response = await fetch('/get', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_input: userText })
+                });
+        
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+        
+                const data = await response.json();
+        
+                // Remove the loading message
+                chatBox.removeChild(loadingDiv);
+        
+                // Validate server response
+                if (data && typeof data.bot_response === 'string') {
+                    // Check if response includes a time in the format "YYYY-MM-DD HH:MM:SS"
+                    const rainTimeMatch = data.bot_response.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+        
+                    const botMessageDiv = document.createElement('div');
+                    botMessageDiv.className = 'bot-message';
+                    chatBox.appendChild(botMessageDiv);
+        
+                    if (rainTimeMatch) {
+                        const utcTime = rainTimeMatch[0];
+                        const localTime = convertToWAT(utcTime);
+        
+                        if (isTimeInPast(utcTime)) {
+                            typeEffect(`Rain was expected around ${localTime}, but that time has passed. Stay alert for new updates.`, botMessageDiv);
+                        } else {
+                            typeEffect(`Rain is expected around ${localTime}`, botMessageDiv);
+                        }
+                    } else {
+                        // Default response if there's no time in it
+                        typeEffect(data.bot_response, botMessageDiv);
+                    }
+                } else {
+                    // Handle invalid server response
+                    const botMessageDiv = document.createElement('div');
+                    botMessageDiv.className = 'bot-message';
+                    botMessageDiv.textContent = 'Error: Invalid server response.';
+                    chatBox.appendChild(botMessageDiv);
+                }
+            } catch (error) {
+                // Handle fetch errors
+                console.error('Error:', error);
+                chatBox.removeChild(loadingDiv);
+                const botMessageDiv = document.createElement('div');
+                botMessageDiv.className = 'bot-message';
+                botMessageDiv.textContent = 'Sorry, there was an error fetching the response.';
+                chatBox.appendChild(botMessageDiv);
+            }
+        
+            chatBox.scrollTop = chatBox.scrollHeight;
+        });
+        </script>
+</body>
+</html>
